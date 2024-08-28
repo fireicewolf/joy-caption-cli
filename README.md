@@ -53,9 +53,6 @@ pip install -U -r huggingface-requirements.txt
 pip install -U -r modelscope-requirements.txt
 ```
 
-### Take a notice
-This project use llama-cpp-python as base lib, and it needs to be complied.
-
 ## Simple usage
 __Make sure your python venv has been activated first!__
 ```shell
