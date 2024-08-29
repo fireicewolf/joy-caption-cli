@@ -92,7 +92,7 @@ class Joy:
             [image for image in glob.glob(path_to_find, recursive=self.args.recursive)
              if image.lower().endswith(SUPPORT_IMAGE_FORMATS)]),
             key=lambda filename: (os.path.splitext(filename)[0])
-        ) if not os.path.isfile(self.args.data_path) else str(self.args.data_path) \
+        ) if not os.path.isfile(self.args.data_path) else [str(self.args.data_path)] \
             if str(self.args.data_path).lower().endswith(SUPPORT_IMAGE_FORMATS) else None
 
         if image_paths is None:
