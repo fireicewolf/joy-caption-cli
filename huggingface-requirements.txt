@@ -1,2 +1,2 @@
-huggingface_hub==0.24.6
+huggingface_hub==0.25.1
 -r requirements.txt

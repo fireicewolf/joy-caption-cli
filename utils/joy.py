@@ -1,4 +1,3 @@
-import glob
 import os
 import time
 from argparse import Namespace
@@ -9,13 +8,12 @@ import torch.amp.autocast_mode
 from PIL import Image
 from torch import nn
 from tqdm import tqdm
-from transformers import (AutoModel, AutoProcessor, AutoTokenizer,
-                          PreTrainedTokenizer, PreTrainedTokenizerFast, AutoModelForCausalLM)
+from transformers import (AutoModel, AutoProcessor, AutoTokenizer, AutoModelForCausalLM,
+                          BitsAndBytesConfig, PreTrainedTokenizer, PreTrainedTokenizerFast)
 
-from utils.image import image_process
+from utils.image import image_process, get_image_paths, image_process_image
 from utils.logger import Logger
 
-SUPPORT_IMAGE_FORMATS = ("bmp", "jpg", "jpeg", "png")
 
 class ImageAdapter(nn.Module):
     def __init__(self, input_features: int, output_features: int):
@@ -29,6 +27,7 @@ class ImageAdapter(nn.Module):
         x = self.activation(x)
         x = self.linear2(x)
         return x
+
 
 class Joy:
     def __init__(
@@ -62,7 +61,7 @@ class Joy:
         self.clip_model = self.clip_model.vision_model
         self.clip_model.eval()
         self.clip_model.requires_grad_(False)
-        self.clip_model.to("cuda")
+        self.clip_model.to("cuda" if self.use_gpu else "cpu")
         self.logger.info(f'CLIP Loaded in {time.monotonic() - start_time:.1f}s.')
 
         # Load LLM
@@ -72,7 +71,27 @@ class Joy:
         assert (isinstance(self.llm_tokenizer, PreTrainedTokenizer) or
                 isinstance(self.llm_tokenizer, PreTrainedTokenizerFast)), \
             f"Tokenizer is of type {type(self.llm_tokenizer)}"
-        self.llm = AutoModelForCausalLM.from_pretrained(self.llm_path, device_map="auto", torch_dtype=torch.bfloat16)
+        # LLM dType
+        llm_dtype = torch.float32 if self.args.llm_use_cpu or self.args.llm_dtype == "fp32" else torch.float16 \
+            if self.args.llm_dtype == "fp16" else torch.bfloat16 if self.args.llm_dtype == "bf16" else "auto"
+        self.logger.info(f'LLM dtype: {llm_dtype}')
+        # LLM BNB quantization config
+        if self.args.llm_qnt == "4bit":
+            qnt_config = BitsAndBytesConfig(load_in_4bit=True,
+                                            bnb_4bit_quant_type="nf4",
+                                            bnb_4bit_compute_dtype=llm_dtype,
+                                            bnb_4bit_use_double_quant=True)
+            self.logger.info(f'LLM 4bit quantization: Enabled')
+        elif self.args.llm_qnt == "8bit":
+            qnt_config = BitsAndBytesConfig(load_in_8bit=True,
+                                            llm_int8_enable_fp32_cpu_offload=True)
+            self.logger.info(f'LLM 8bit quantization: Enabled')
+        else:
+            qnt_config = None
+        self.llm = AutoModelForCausalLM.from_pretrained(self.llm_path,
+                                                        device_map="auto" if not self.args.llm_use_cpu else "cpu",
+                                                        torch_dtype=llm_dtype if self.args.llm_qnt == "none" else None,
+                                                        quantization_config=qnt_config)
         self.llm.eval()
         self.logger.info(f'LLM Loaded in {time.monotonic() - start_time:.1f}s.')
 
@@ -81,28 +100,15 @@ class Joy:
         self.image_adapter = ImageAdapter(self.clip_model.config.hidden_size, self.llm.config.hidden_size)
         self.image_adapter.load_state_dict(torch.load(self.image_adapter_path, map_location="cpu"))
         self.image_adapter.eval()
-        self.image_adapter.to("cuda")
+        self.image_adapter.to(self.llm.device)
         self.logger.info(f'Image Adapter Loaded in {time.monotonic() - start_time:.1f}s.')
 
     def inference(self):
         # Get image paths
-        path_to_find = os.path.join(self.args.data_path, '**') \
-            if self.args.recursive else os.path.join(self.args.data_path, '*')
-        image_paths = sorted(set(
-            [image for image in glob.glob(path_to_find, recursive=self.args.recursive)
-             if image.lower().endswith(SUPPORT_IMAGE_FORMATS)]),
-            key=lambda filename: (os.path.splitext(filename)[0])
-        ) if not os.path.isfile(self.args.data_path) else [str(self.args.data_path)] \
-            if str(self.args.data_path).lower().endswith(SUPPORT_IMAGE_FORMATS) else None
-
-        if image_paths is None:
-            self.logger.error('Invalid dir or image path!')
-            raise FileNotFoundError
-
-        self.logger.info(f'Found {len(image_paths)} image(s).')
+        image_paths = get_image_paths(logger=self.logger, path=Path(self.args.data_path), recursive=self.args.recursive)
 
         def get_caption(
-                image: Image,
+                image: Image.Image,
                 user_prompt: str,
                 temperature: float = 0.5,
                 max_new_tokens: int = 300,
@@ -111,7 +117,7 @@ class Joy:
             torch.cuda.empty_cache()
             # Preprocess image
             image = self.clip_processor(images=image, return_tensors='pt').pixel_values
-            image = image.to('cuda')
+            image = image.to(self.llm.device)
             # Tokenize the prompt
             prompt = self.llm_tokenizer.encode(user_prompt,
                                                return_tensors='pt',
@@ -119,13 +125,13 @@ class Joy:
                                                truncation=False,
                                                add_special_tokens=False)
             # Embed image
-            with torch.amp.autocast_mode.autocast('cuda', enabled=True):
+            with torch.amp.autocast_mode.autocast("cuda" if self.use_gpu else "cpu", enabled=True):
                 vision_outputs = self.clip_model(pixel_values=image, output_hidden_states=True)
                 image_features = vision_outputs.hidden_states[-2]
                 embedded_images = self.image_adapter(image_features)
-                embedded_images = embedded_images.to('cuda')
+                embedded_images = embedded_images.to(self.llm.device)
             # Embed prompt
-            prompt_embeds = self.llm.model.embed_tokens(prompt.to('cuda'))
+            prompt_embeds = self.llm.model.embed_tokens(prompt.to(self.llm.device))
             assert prompt_embeds.shape == (1, prompt.shape[1],
                                            self.llm.config.hidden_size), \
                 f"Prompt shape is {prompt_embeds.shape}, expected {(1, prompt.shape[1], self.llm.config.hidden_size)}"
@@ -143,7 +149,7 @@ class Joy:
                 torch.tensor([[self.llm_tokenizer.bos_token_id]], dtype=torch.long),
                 torch.zeros((1, embedded_images.shape[1]), dtype=torch.long),
                 prompt,
-            ], dim=1).to('cuda')
+            ], dim=1).to(self.llm.device)
             attention_mask = torch.ones_like(input_ids)
             # Generate caption
             generate_ids = self.llm.generate(input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask,
@@ -167,6 +173,7 @@ class Joy:
                                                              image_path[:15]) + ' ... ' + image_path[-20:])
                 image = Image.open(image_path)
                 image = image_process(image, int(self.args.image_size))
+                image = image_process_image(image)
                 caption = get_caption(
                     image=image,
                     user_prompt=self.args.user_prompt,

@@ -1,35 +1,41 @@
 # Joy Caption Cli
-A Python base cli tool for tagging images with [joy-caption-pre-alpha](https://huggingface.co/spaces/fancyfeast/joy-caption-pre-alpha) models.
+
+A Python base cli tool for tagging images
+with [joy-caption-pre-alpha](https://huggingface.co/spaces/fancyfeast/joy-caption-pre-alpha) models.
 
 ### Only support cuda devices in current.
 
 ## Introduce
 
-I make this repo because I want to caption some images cross-platform (On My old MBP, my game win pc or docker base linux cloud-server(like Google colab))
+I make this repo because I want to caption some images cross-platform (On My old MBP, my game win pc or docker base
+linux cloud-server(like Google colab))
 
-But I don't want to install a huge webui just for this little work. And some cloud-service are unfriendly to gradio base ui.
+But I don't want to install a huge webui just for this little work. And some cloud-service are unfriendly to gradio base
+ui.
 
 So this repo born.
 
-
 ## Model source
 
-Huggingface are original sources, modelscope are pure forks from Huggingface(Because HuggingFace was blocked in Some place).
+Huggingface are original sources, modelscope are pure forks from Huggingface(Because HuggingFace was blocked in Some
+place).
 
-|               Model               |                                HuggingFace Link                                |                                       ModelScope Link                                        |
-|:---------------------------------:|:------------------------------------------------------------------------------:|:--------------------------------------------------------------------------------------------:|
-|       joy-caption-pre-alpha       |     [HuggingFace](https://huggingface.co/spaces/fancyfeast/joy-caption-pre-alpha)      |       [ModelScope](https://www.modelscope.cn/models/fireicewolf/joy-caption-pre-alpha)       |
-| siglip-so400m-patch14-384(Google) |       [HuggingFace](https://huggingface.co/google/siglip-so400m-patch14-384)       |        [ModelScope](https://www.modelscope.cn/models/fireicewolf/siglip-so400m-patch14-384)        |
-|         Meta-Llama-3.1-8B         |    [HuggingFace](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B)     |        [ModelScope](https://www.modelscope.cn/models/fireicewolf/Meta-Llama-3.1-8B)         |
+|               Model               |                               HuggingFace Link                                |                                   ModelScope Link                                    |
+|:---------------------------------:|:-----------------------------------------------------------------------------:|:------------------------------------------------------------------------------------:|
+|       joy-caption-pre-alpha       | [HuggingFace](https://huggingface.co/spaces/fancyfeast/joy-caption-pre-alpha) |   [ModelScope](https://www.modelscope.cn/models/fireicewolf/joy-caption-pre-alpha)   |
+| siglip-so400m-patch14-384(Google) |    [HuggingFace](https://huggingface.co/google/siglip-so400m-patch14-384)     | [ModelScope](https://www.modelscope.cn/models/fireicewolf/siglip-so400m-patch14-384) |
+|         Meta-Llama-3.1-8B         |      [HuggingFace](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B)       |     [ModelScope](https://www.modelscope.cn/models/fireicewolf/Meta-Llama-3.1-8B)     |
 
 ## TO-DO
 
 make a simple ui by Jupyter widget(When my lazy cancer cured😊)
 
 ## Installation
+
 Python 3.10 works fine.
 
 Open a shell terminal and follow below steps:
+
 ```shell
 # Clone this repo
 git clone https://github.com/fireicewolf/joy-caption-cli.git
@@ -54,16 +60,21 @@ pip install -U -r modelscope-requirements.txt
 ```
 
 ## Simple usage
+
 __Make sure your python venv has been activated first!__
+
 ```shell
 python caption.py your_datasets_path
 ```
+
 To run with more options, You can find help by run with this or see at [Options](#options)
+
 ```shell
 python caption.py -h
 ```
 
-##  <span id="options">Options</span>
+## <span id="options">Options</span>
+
 <details>
     <summary>Advance options</summary>
 `data_path`
@@ -81,11 +92,12 @@ config json for llava models, default is "default.json"
 [//]: # (`--use_cpu`)
 
 [//]: # ()
+
 [//]: # (Use cpu for inference.)
 
 `--model_name MODEL_NAME`
 
-model name for inference, default is "Joy-Caption-Pre-Alpha", please check configs/default.json)
+model name for inference, default is "Joy-Caption-Pre-Alpha", please check configs/default.json
 
 `--model_site MODEL_SITE`
 
@@ -142,6 +154,7 @@ max tokens for output, default is 300.
 </details>
 
 ## Credits
+
 Base on [oy-caption-pre-alpha](https://huggingface.co/spaces/fancyfeast/joy-caption-pre-alpha)
 
 Without their works(👏👏), this repo won't exist.

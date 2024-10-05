@@ -1,13 +1,43 @@
 import base64
+import glob
+import os
+from io import BytesIO
 from pathlib import Path
+from typing import List
 
 import cv2
 import numpy
-from io import BytesIO
 from PIL import Image
 
+from utils.logger import Logger
 
-def image_process(image: Image.Image, target_size: int) -> Image.Image:
+SUPPORT_IMAGE_FORMATS = ("bmp", "jpg", "jpeg", "png", "webp")
+
+
+def get_image_paths(
+        logger: Logger,
+        path: Path,
+        recursive: bool = False,
+) -> List[str]:
+    # Get image paths
+    path_to_find = os.path.join(path, '**') if recursive else os.path.join(path, '*')
+    image_paths = sorted(set(
+        [image for image in glob.glob(path_to_find, recursive=recursive)
+         if image.lower().endswith(SUPPORT_IMAGE_FORMATS)]), key=lambda filename: (os.path.splitext(filename)[0])
+    ) if not os.path.isfile(path) else [str(path)] \
+        if str(path).lower().endswith(SUPPORT_IMAGE_FORMATS) else None
+
+    logger.debug(f"Path for inference: \"{path}\"")
+
+    if image_paths is None:
+        logger.error('Invalid dir or image path!')
+        raise FileNotFoundError
+
+    logger.info(f'Found {len(image_paths)} image(s).')
+    return image_paths
+
+
+def image_process(image: Image.Image, target_size: int) -> numpy.ndarray:
     # make alpha to white
     image = image.convert('RGBA')
     new_image = Image.new('RGBA', image.size, 'WHITE')
@@ -53,7 +83,22 @@ def image_process(image: Image.Image, target_size: int) -> Image.Image:
             interpolation=cv2.INTER_LANCZOS4
         )
 
+    return padded_image
+
+
+def image_process_image(
+        padded_image: numpy.ndarray
+) -> Image.Image:
     return Image.fromarray(padded_image)
+
+
+def image_process_gbr(
+        padded_image: numpy.ndarray
+) -> numpy.ndarray:
+    # From PIL RGB to OpenCV GBR
+    padded_image = padded_image[:, :, ::-1]
+    padded_image = padded_image.astype(numpy.float32)
+    return padded_image
 
 
 def encode_image_to_base64(image: Image.Image):
